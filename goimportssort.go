@@ -20,18 +20,18 @@ import (
 	"sort"
 	"strings"
 
-	"golang.org/x/mod/modfile"
-	"golang.org/x/tools/go/packages"
-
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
 	"github.com/dave/dst/dstutil"
+	"golang.org/x/mod/modfile"
+	"golang.org/x/tools/go/packages"
 )
 
 var (
 	list             = flag.Bool("l", false, "write results to stdout")
 	write            = flag.Bool("w", false, "write result to (source) file instead of stdout")
 	localPrefix      = flag.String("local", "", "put imports beginning with this string after 3rd-party packages; comma-separated list")
+	secondPrefix     = flag.String("second", "", "put imports beginning with this string after 3rd-party packages; comma-separated list")
 	verbose          bool // verbose logging
 	standardPackages = make(map[string]struct{})
 )
@@ -40,6 +40,52 @@ var (
 type impModel struct {
 	path           string
 	localReference string
+}
+
+const (
+	GroupStandard int = iota // 0
+	GroupThird
+	GroupSecond
+	GroupLocal
+	GroupCount
+)
+
+type impManager struct {
+	groups []*impGroup
+}
+
+type impGroup struct {
+	models []*impModel
+}
+
+func (g *impGroup) append(model *impModel) {
+	g.models = append(g.models, model)
+}
+
+func newImpManager() *impManager {
+	groups := make([]*impGroup, GroupCount)
+	for idx := range groups {
+		groups[idx] = &impGroup{
+			models: []*impModel{},
+		}
+	}
+	return &impManager{groups: groups}
+}
+
+func (m *impManager) Standard() *impGroup {
+	return m.groups[GroupStandard]
+}
+
+func (m *impManager) Local() *impGroup {
+	return m.groups[GroupLocal]
+}
+
+func (m *impManager) ThirdPart() *impGroup {
+	return m.groups[GroupThird]
+}
+
+func (m *impManager) SecondPart() *impGroup {
+	return m.groups[GroupSecond]
 }
 
 // string is used to get a string representation of an import
@@ -187,28 +233,27 @@ func closeFile(file *os.File) {
 func process(src []byte) (output []byte, err error) {
 	var (
 		fileSet          = token.NewFileSet()
-		convertedImports [][]impModel
+		convertedImports *impManager
 		node             *dst.File
 	)
 
-	err = loadStandardPackages()
-	if err == nil {
-		node, err = decorator.ParseFile(fileSet, "", src, parser.ParseComments)
+	node, err = decorator.ParseFile(fileSet, "", src, parser.ParseComments)
+	if err != nil {
+		panic(err)
 	}
-	if err == nil {
-		convertedImports, err = convertImportsToSlice(node)
+	convertedImports, err = convertImportsToSlice(node)
+	if err != nil {
+		panic(err)
 	}
-
-	if err == nil {
-		if countImports(convertedImports) == 0 {
-			return src, err
-		}
+	if convertedImports.countImports() == 0 {
+		return src, err
 	}
 
-	if err == nil {
-		sortedImports := sortImports(convertedImports)
-		convertedToGo := convertImportsToGo(sortedImports)
-		output, err = replaceImports(convertedToGo, node)
+	convertedImports.sortImports()
+	convertedToGo := convertedImports.convertImportsToGo()
+	output, err = replaceImports(convertedToGo, node)
+	if err != nil {
+		panic(err)
 	}
 
 	return output, err
@@ -245,50 +290,60 @@ func replaceImports(newImports []byte, node *dst.File) ([]byte, error) {
 	return output, err
 }
 
-// sortImports sorts multiple imports by import name & prefix
-func sortImports(imports [][]impModel) [][]impModel {
-	for x := 0; x < len(imports); x++ {
-		sort.Slice(imports[x], func(i, j int) bool {
-			if imports[x][i].path != imports[x][j].path {
-				return imports[x][i].path < imports[x][j].path
-			}
+func (m *impManager) sortImports() {
+	for _, g := range m.groups {
+		g.sortImports()
+	}
+}
 
-			return imports[x][i].localReference < imports[x][j].localReference
+// sortImports sorts multiple imports by import name & prefix
+func (g *impGroup) sortImports() {
+	var imports = g.models
+	for x := 0; x < len(imports); x++ {
+		sort.Slice(imports, func(i, j int) bool {
+			if imports[i].path != imports[j].path {
+				return imports[i].path < imports[j].path
+			}
+			return imports[i].localReference < imports[j].localReference
 		})
 	}
-
-	return imports
 }
 
 // convertImportsToGo generates output for correct categorised import statements
-func convertImportsToGo(imports [][]impModel) []byte {
+func (m *impManager) convertImportsToGo() []byte {
 	output := "import ("
-	for i := 0; i < len(imports); i++ {
-		if len(imports[i]) == 0 {
+
+	for _, group := range m.groups {
+		if group.countImports() == 0 {
 			continue
 		}
 		output += "\n"
-		for _, imp := range imports[i] {
+		for _, imp := range group.models {
 			output += fmt.Sprintf("\t%v\n", imp.string())
 		}
 	}
+
 	output += ")"
 
 	return []byte(output)
 }
 
+func (g *impGroup) countImports() int {
+	return len(g.models)
+}
+
 // countImports count the total number of imports of a [][]impModel
-func countImports(impModels [][]impModel) int {
+func (m *impManager) countImports() int {
 	count := 0
-	for i := 0; i < len(impModels); i++ {
-		count += len(impModels[i])
+	for _, group := range m.groups {
+		count += group.countImports()
 	}
 	return count
 }
 
 // convertImportsToSlice parses the file with AST and gets all imports
-func convertImportsToSlice(node *dst.File) ([][]impModel, error) {
-	importCategories := make([][]impModel, 3)
+func convertImportsToSlice(node *dst.File) (*impManager, error) {
+	importCategories := newImpManager()
 
 	for _, importSpec := range node.Imports {
 		impName := importSpec.Path.Value
@@ -301,16 +356,40 @@ func convertImportsToSlice(node *dst.File) ([][]impModel, error) {
 		}
 		locImpModel.path = impName
 
-		if *localPrefix != "" && strings.Count(impName, *localPrefix) > 0 {
-			importCategories[2] = append(importCategories[2], locImpModel)
+		if *localPrefix != "" && isLocalPackage(impName) {
+			var group = importCategories.Local()
+			group.append(&locImpModel)
 		} else if isStandardPackage(impNameWithoutQuotes) {
-			importCategories[0] = append(importCategories[0], locImpModel)
+			var group = importCategories.Standard()
+			group.append(&locImpModel)
+		} else if isSecondPackage(impNameWithoutQuotes) {
+			var group = importCategories.SecondPart()
+			group.append(&locImpModel)
 		} else {
-			importCategories[1] = append(importCategories[1], locImpModel)
+			var group = importCategories.ThirdPart()
+			group.append(&locImpModel)
 		}
 	}
 
 	return importCategories, nil
+}
+
+func isSecondPackage(impName string) bool {
+	if *secondPrefix != "" {
+		// name with " or not
+		if strings.HasPrefix(impName, *secondPrefix) || strings.HasPrefix(impName, "\""+*secondPrefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func isLocalPackage(impName string) bool {
+	// name with " or not
+	if strings.HasPrefix(impName, *localPrefix) || strings.HasPrefix(impName, "\""+*localPrefix) {
+		return true
+	}
+	return false
 }
 
 // loadStandardPackages tries to fetch all golang std packages
@@ -348,4 +427,12 @@ func getModuleName() string {
 	modName := modfile.ModulePath(goModBytes)
 
 	return modName
+}
+
+func init() {
+	// load it in global
+	err := loadStandardPackages()
+	if err != nil {
+		panic(err)
+	}
 }
