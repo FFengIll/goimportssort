@@ -31,6 +31,7 @@ var (
 	list             = flag.Bool("l", false, "write results to stdout")
 	write            = flag.Bool("w", false, "write result to (source) file instead of stdout")
 	localPrefix      = flag.String("local", "", "put imports beginning with this string after 3rd-party packages; comma-separated list")
+	secondPrefix     = flag.String("second", "", "put imports beginning with this string after 3rd-party packages; comma-separated list")
 	verbose          bool // verbose logging
 	standardPackages = make(map[string]struct{})
 )
@@ -44,6 +45,7 @@ type impModel struct {
 const (
 	GroupStandard int = iota // 0
 	GroupThird
+	GroupSecond
 	GroupLocal
 	GroupCount
 )
@@ -80,6 +82,10 @@ func (m *impManager) Local() *impGroup {
 
 func (m *impManager) ThirdPart() *impGroup {
 	return m.groups[GroupThird]
+}
+
+func (m *impManager) SecondPart() *impGroup {
+	return m.groups[GroupSecond]
 }
 
 // string is used to get a string representation of an import
@@ -356,6 +362,9 @@ func convertImportsToSlice(node *dst.File) (*impManager, error) {
 		} else if isStandardPackage(impNameWithoutQuotes) {
 			var group = importCategories.Standard()
 			group.append(&locImpModel)
+		} else if isSecondPackage(impNameWithoutQuotes) {
+			var group = importCategories.SecondPart()
+			group.append(&locImpModel)
 		} else {
 			var group = importCategories.ThirdPart()
 			group.append(&locImpModel)
@@ -363,6 +372,16 @@ func convertImportsToSlice(node *dst.File) (*impManager, error) {
 	}
 
 	return importCategories, nil
+}
+
+func isSecondPackage(impName string) bool {
+	if *secondPrefix != "" {
+		// name with " or not
+		if strings.HasPrefix(impName, *secondPrefix) || strings.HasPrefix(impName, "\""+*secondPrefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func isLocalPackage(impName string) bool {
