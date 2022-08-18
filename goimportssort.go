@@ -169,12 +169,15 @@ func isGoFile(f os.FileInfo) bool {
 
 // walkDir walks through a path, processing all go files recursively in a directory
 func walkDir(path string) error {
-	return filepath.Walk(path, func(path string, f os.FileInfo, err error) error {
-		if err == nil && isGoFile(f) {
-			_, err = processFile(path, nil, os.Stdout)
-		}
-		return err
-	})
+	return filepath.Walk(
+		path,
+		func(path string, f os.FileInfo, err error) error {
+			if err == nil && isGoFile(f) {
+				_, err = processFile(path, nil, os.Stdout)
+			}
+			return err
+		},
+	)
 }
 
 // processFile reads a file and processes the content, then checks if they're equal.
