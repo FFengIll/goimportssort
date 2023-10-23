@@ -1,8 +1,7 @@
 /*
-goimportssort sorts your Go import lines in three categories: inbuilt, external and local.
-     $ go get -u github.com/AanZee/goimportssort
-*/
-package main
+Origin: goimportssort sorts your Go import lines in three categories: inbuilt, external and local.
+New: you can add categories with options for 2nd-part modules.
+*/package main
 
 import (
 	"bytes"
@@ -12,7 +11,6 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -119,7 +117,7 @@ func goImportsSortMain() error {
 	if verbose {
 		log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	} else {
-		log.SetOutput(ioutil.Discard)
+		log.SetOutput(io.Discard)
 	}
 
 	if *localPrefix == "" {
@@ -193,7 +191,7 @@ func processFile(filename string, in io.Reader, out io.Writer) ([]byte, error) {
 		in = f
 	}
 
-	src, err := ioutil.ReadAll(in)
+	src, err := io.ReadAll(in)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +207,7 @@ func processFile(filename string, in io.Reader, out io.Writer) ([]byte, error) {
 			_, _ = fmt.Fprintln(out, string(res))
 		}
 		if *write {
-			err = ioutil.WriteFile(filename, res, 0)
+			err = os.WriteFile(filename, res, 0)
 			if err != nil {
 				return nil, err
 			}
@@ -421,7 +419,7 @@ func getModuleName() string {
 		return ""
 	}
 
-	goModBytes, err := ioutil.ReadFile(filepath.Join(root, "go.mod"))
+	goModBytes, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	if err != nil {
 		log.Println("error when reading mod file: ", err)
 		return ""
