@@ -3,6 +3,11 @@ This tool aims to automatically fix the order of golang imports.
 
 This repo is a fork of original [goimportssort](https://github.com/AanZee/goimportssort) with perf and more features.
 
+# Install
+```sh
+go install github.com/FFengIll/sortimport@latest
+```
+
 # Original Features
 - Automatically split your imports in three categories: inbuilt, external and local.
 - Written fully in Golang, no dependencies, works on any platform.
