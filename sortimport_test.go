@@ -195,5 +195,5 @@ func TestGetModuleName(t *testing.T) {
 
 	name := getModuleName()
 
-	asserts.Equal("github.com/AanZee/goimportssort", name)
+	asserts.Equal("github.com/FFengIll/sortimport", name)
 }
