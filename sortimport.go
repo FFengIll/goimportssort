@@ -5,6 +5,7 @@ New: you can add categories with options for 2nd-part modules.
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -393,13 +394,97 @@ func isLocalPackage(impName string) bool {
 	return false
 }
 
+type PackageInfo struct {
+	Data    map[string]struct{} `json:"data"`
+	Version string              `json:"version"`
+}
+
+func getCachePath() (string, error) {
+	homedir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(homedir, ".cache/sortimport.json")
+	return path, nil
+}
+
+// readCache load the file under user home which stores standard package info
+func readCache() (*PackageInfo, error) {
+	path, err := getCachePath()
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil, err
+	}
+
+	bs, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var info PackageInfo
+	if err := json.Unmarshal(bs, &info); err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("load standard package cache from %s\n", path)
+
+	return &info, nil
+}
+
+// writeCache write standard package info with current runtime version into use home cache file (in json)
+func writeCache(version string, standardPackages map[string]struct{}) error {
+	path, err := getCachePath()
+	if err != nil {
+		return err
+	}
+
+	var info PackageInfo
+	info.Data = make(map[string]struct{})
+	for k, v := range standardPackages {
+		info.Data[k] = v
+	}
+	info.Version = version
+
+	bs, err := json.Marshal(info)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(path, bs, 0644)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("write standard package cache to %s\n", path)
+	return nil
+
+}
+
 // loadStandardPackages tries to fetch all golang std packages
 func loadStandardPackages() error {
+	info, _ := readCache()
+	if info != nil {
+		// only use cache while version is matched
+		version := runtime.Version()
+		if version == info.Version {
+			for k, v := range info.Data {
+				standardPackages[k] = v
+			}
+			return nil
+		}
+	}
+
 	pkgs, err := packages.Load(nil, "std")
 	if err == nil {
 		for _, p := range pkgs {
 			standardPackages[p.PkgPath] = struct{}{}
 		}
+
+		// for each time we do the parse, cache it
+		version := runtime.Version()
+		writeCache(version, standardPackages)
 	}
 
 	return err
