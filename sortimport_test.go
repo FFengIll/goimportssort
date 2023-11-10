@@ -197,3 +197,23 @@ func TestGetModuleName(t *testing.T) {
 
 	asserts.Equal("github.com/FFengIll/sortimport", name)
 }
+
+func Test_loadStandardPackages(t *testing.T) {
+	tests := []struct {
+		name    string
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+		{
+			name:    "load",
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := loadStandardPackages(); (err != nil) != tt.wantErr {
+				t.Errorf("loadStandardPackages() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
