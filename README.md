@@ -17,5 +17,6 @@ go install github.com/FFengIll/sortimport@latest
 - No more manually fixing import orders.
 
 # New Features
-- Load standard go module only once for all task. (complete more quick) 
+- Load standard go module only once for all task. (complete more quick).
 - Support secondary package prefix (2-part-package) which will sort import into 4 groups.
+- Cache standard package info to reduce parse time cost and run more quickly.
