@@ -136,6 +136,12 @@ func goImportsSortMain() error {
 		return errors.New("please enter a path to fix")
 	}
 
+	// load it in global
+	err := loadStandardPackages()
+	if err != nil {
+		panic(err)
+	}
+
 	for _, path := range paths {
 		switch dir, statErr := os.Stat(path); {
 		case statErr != nil:
@@ -513,12 +519,4 @@ func getModuleName() string {
 	modName := modfile.ModulePath(goModBytes)
 
 	return modName
-}
-
-func init() {
-	// load it in global
-	err := loadStandardPackages()
-	if err != nil {
-		panic(err)
-	}
 }
